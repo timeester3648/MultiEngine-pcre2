@@ -103,3 +103,9 @@ zig-cache/
 .zig-cache/
 
 # End
+
+# exclude project files
+**.sln
+**.vcxproj
+**.vcxproj.user
+**.vcxproj.filters
