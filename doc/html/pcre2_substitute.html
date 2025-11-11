@@ -12,9 +12,9 @@ This page is part of the PCRE2 HTML documentation. It was generated
 automatically from the original man page. If there is any nonsense in it,
 please consult the man page, in case the conversion went wrong.
 <br>
-<br><b>
+<h2>
 SYNOPSIS
-</b><br>
+</h2>
 <p>
 <b>#include &#60;pcre2.h&#62;</b>
 </p>
@@ -26,9 +26,9 @@ SYNOPSIS
 <b>  PCRE2_SIZE <i>rlength</i>, PCRE2_UCHAR *<i>outputbuffer</i>,</b>
 <b>  PCRE2_SIZE *<i>outlengthptr</i>);</b>
 </p>
-<br><b>
+<h2>
 DESCRIPTION
-</b><br>
+</h2>
 <p>
 This function matches a compiled regular expression against a given subject
 string, using a matching algorithm that is similar to Perl's. It then makes a
@@ -91,8 +91,9 @@ PCRE2_SUBSTITUTE_UNKNOWN_UNSET, and PCRE2_SUBSTITUTE_UNSET_EMPTY are ignored.
 </p>
 <p>
 If PCRE2_SUBSTITUTE_MATCHED is set, <i>match_data</i> must be non-NULL; its
-contents must be the result of a call to <b>pcre2_match()</b> using the same
-pattern and subject.
+contents must be the result of a call to <b>pcre2_match()</b> (or
+<b>pcre2_jit_match()</b>) using the same pattern, subject pointer, effective
+subject length, start offset, and match options.
 </p>
 <p>
 The function returns the number of substitutions, which may be zero if there

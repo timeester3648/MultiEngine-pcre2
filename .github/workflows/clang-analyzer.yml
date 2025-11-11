@@ -2,71 +2,59 @@ name: Clang Static Analyzer
 on:
   workflow_dispatch:
   push:
-    branches: [ master, "release/**" ]
+    branches: [ main, "release/**" ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 permissions:
   contents: read
 
 jobs:
   Analyze:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     permissions:
       # Needed to upload the results to code-scanning dashboard.
       security-events: write
       contents: read
 
-    env:
-      # The @microsoft/sarif-multitool tool actually uses DotnetCore, which in
-      # turn aborts when it finds that GitHub's CI machine doesn't have ICU.
-      # Just turn off localisation. A future version of the ubuntu-24.04 or
-      # ubuntu-latest runners might not need this workaround.
-      # https://github.com/actions/runner-images/issues/10989
-      DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: 1
-
     steps:
       - name: Setup
         run: |
+          echo "set man-db/auto-update false" | sudo debconf-communicate && sudo dpkg-reconfigure man-db
           sudo apt-get -qq update
-          sudo apt-get -qq install ninja-build clang-tools
+          sudo apt-get -qq install -y ninja-build clang-tools
 
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           submodules: true
 
-      - name: Configure
+      - name: Configure & Build
         run: |
+          LLVM_VER=`clang --version | head -n1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | cut -d. -f1`
+          echo "Using LLVM version $LLVM_VER"
+
           mkdir build
           cd build
-          scan-build cmake -G Ninja -DPCRE2_SUPPORT_JIT=ON -DCMAKE_BUILD_TYPE=Debug ..
 
-      - name: Build
-        run: |
-          # Inefficiently run clang scan twice; once to generate HTML, and secondly
-          # to generate SARIF files. Ideally we would have some way to scan once and
-          # generate one of those outputs from the other, but I don't know a good way
-          # to do that.
-          cd build
-          scan-build -o clang-report/ ninja
+          scan-build-py-$LLVM_VER cmake -G Ninja -DPCRE2_SUPPORT_JIT=ON -DCMAKE_BUILD_TYPE=Debug ..
+          scan-build-py-$LLVM_VER -o clang-sarif-root/ --sarif-html ninja
+          rm clang-sarif-root/*/result-*.sarif
+          mv clang-sarif-root/* ../clang-report
 
-          ninja clean
-          scan-build -o clang-sarif -sarif ninja
-          # Work around issue in GitHub's SARIF ingestion - merge all SARIF files into one
-          npx -y @microsoft/sarif-multitool merge clang-sarif/*/*.sarif --output-file=clang.sarif
+          ../.github/scripts/merge_sarif.py ../clang-report/results-merged.sarif
 
       # Upload the browsable HTML report as an artifact.
       - name: Upload report
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: "Clang Static Analyzer report"
-          path: './build/clang-report'
+          path: './clang-report'
 
       # Upload the results to GitHub's code scanning dashboard.
       - name: "Upload to code-scanning"
-        uses: github/codeql-action/upload-sarif@dd746615b3b9d728a6a37ca2045b68ca76d4841a # v3.28.8
+        uses: github/codeql-action/upload-sarif@0499de31b99561a6d14a36a5f662c2a54f91beee # v3.29.5
         with:
-          sarif_file: build/clang.sarif
+          sarif_file: ./clang-report/results-merged.sarif
           category: clang-analyzer

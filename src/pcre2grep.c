@@ -48,8 +48,12 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "config.h"
 #endif
 
+#include "pcre2_util.h"
+
 #include <ctype.h>
+#include <limits.h>
 #include <locale.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -529,44 +533,6 @@ const char utf8_table4[] = {
   1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
   2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
   3,3,3,3,3,3,3,3,4,4,4,4,5,5,5,5 };
-
-
-#if !defined(VPCOMPAT) && !defined(HAVE_MEMMOVE)
-/*************************************************
-*    Emulated memmove() for systems without it   *
-*************************************************/
-
-/* This function can make use of bcopy() if it is available. Otherwise do it by
-steam, as there are some non-Unix environments that lack both memmove() and
-bcopy(). */
-
-static void *
-emulated_memmove(void *d, const void *s, size_t n)
-{
-#ifdef HAVE_BCOPY
-bcopy(s, d, n);
-return d;
-#else
-size_t i;
-unsigned char *dest = (unsigned char *)d;
-const unsigned char *src = (const unsigned char *)s;
-if (dest > src)
-  {
-  dest += n;
-  src += n;
-  for (i = 0; i < n; ++i) *(--dest) = *(--src);
-  return (void *)dest;
-  }
-else
-  {
-  for (i = 0; i < n; ++i) *dest++ = *src++;
-  return (void *)(dest - n);
-  }
-#endif   /* not HAVE_BCOPY */
-}
-#undef memmove
-#define memmove(d,s,n) emulated_memmove(d,s,n)
-#endif   /* not VPCOMPAT && not HAVE_MEMMOVE */
 
 
 
@@ -1168,28 +1134,6 @@ FWRITE_IGNORE(buf, 1, length, stdout);
 }
 
 #endif  /* End of system-specific functions */
-
-
-
-#ifndef HAVE_STRERROR
-/*************************************************
-*     Provide strerror() for non-ANSI libraries  *
-*************************************************/
-
-/* Some old-fashioned systems still around (e.g. SunOS4) don't have strerror()
-in their libraries, but can provide the same facility by this simple
-alternative function. */
-
-extern int   sys_nerr;
-extern char *sys_errlist[];
-
-char *
-strerror(int n)
-{
-if (n < 0 || n >= sys_nerr) return "unknown error number";
-return sys_errlist[n];
-}
-#endif /* HAVE_STRERROR */
 
 
 
@@ -2051,7 +1995,7 @@ switch (*(++string))
     break;
     }
 
-  /* Fall through */
+  PCRE2_FALLTHROUGH /* Fall through */
 
   /* The maximum capture number is 65535, so any number greater than that will
   always be an unknown capture number. We just stop incrementing, in order to
@@ -2586,7 +2530,7 @@ return result != 0;
 *     Read a portion of the file into buffer     *
 *************************************************/
 
-static PCRE2_SIZE
+static ptrdiff_t
 fill_buffer(void *handle, int frtype, char *buffer, PCRE2_SIZE length,
   BOOL input_line_buffered)
 {
@@ -2595,13 +2539,15 @@ PCRE2_SIZE nread;
 
 #ifdef SUPPORT_LIBZ
 if (frtype == FR_LIBZ)
-  return gzread((gzFile)handle, buffer, length);
+  return gzread((gzFile)handle, buffer,
+                (length > UINT_MAX)? UINT_MAX : (unsigned)length);
 else
 #endif
 
 #ifdef SUPPORT_LIBBZ2
 if (frtype == FR_LIBBZ2)
-  return (PCRE2_SIZE)BZ2_bzread((BZFILE *)handle, buffer, length);
+  return BZ2_bzread((BZFILE *)handle, buffer,
+                    (length > UINT_MAX)? UINT_MAX : (unsigned)length);
 else
 #endif
 
@@ -2614,7 +2560,7 @@ if (nread > 0) VALGRIND_MAKE_MEM_DEFINED_IF_ADDRESSABLE(buffer, nread);
 if (nread < length) VALGRIND_MAKE_MEM_UNDEFINED(buffer + nread, length - nread);
 #endif
 
-return nread;
+return (ptrdiff_t)nread;
 }
 
 
@@ -2659,6 +2605,7 @@ char *lastmatchrestart = main_buffer;
 char *ptr = main_buffer;
 char *endptr;
 PCRE2_SIZE bufflength;
+ptrdiff_t buffrc;
 BOOL binary = FALSE;
 BOOL endhyphenpending = FALSE;
 BOOL lines_printed = FALSE;
@@ -2684,13 +2631,17 @@ if (frtype != FR_LIBZ && frtype != FR_LIBBZ2)
   }
 else input_line_buffered = FALSE;
 
-bufflength = fill_buffer(handle, frtype, main_buffer, bufsize,
+buffrc = fill_buffer(handle, frtype, main_buffer, bufsize,
   input_line_buffered);
 
+#if defined SUPPORT_LIBZ
+if (frtype == FR_LIBZ && buffrc < 0) return 3;
+#endif
 #ifdef SUPPORT_LIBBZ2
-if (frtype == FR_LIBBZ2 && (int)bufflength < 0) return 3;   /* Gotcha: bufflength is PCRE2_SIZE */
+if (frtype == FR_LIBBZ2 && buffrc < 0) return 3;
 #endif
 
+bufflength = (PCRE2_SIZE)buffrc;
 endptr = main_buffer + bufflength;
 
 /* Unless binary-files=text, see if we have a binary file. This uses the same
@@ -2788,8 +2739,17 @@ while (ptr < endptr)
       /* Read more data into the buffer and then try to find the line ending
       again. */
 
-      bufflength += fill_buffer(handle, frtype, main_buffer + bufflength,
+      buffrc = fill_buffer(handle, frtype, main_buffer + bufflength,
         bufsize - bufflength, input_line_buffered);
+
+#if defined SUPPORT_LIBZ
+      if (frtype == FR_LIBZ && buffrc < 0) return 3;
+#endif
+#ifdef SUPPORT_LIBBZ2
+      if (frtype == FR_LIBBZ2 && buffrc < 0) return 3;
+#endif
+
+      bufflength += (PCRE2_SIZE)buffrc;
       endptr = main_buffer + bufflength;
       continue;
       }
@@ -3260,8 +3220,17 @@ while (ptr < endptr)
     (void)memmove(main_buffer, main_buffer + bufthird, 2*bufthird);
     ptr -= bufthird;
 
-    bufflength = 2*bufthird + fill_buffer(handle, frtype,
-      main_buffer + 2*bufthird, bufthird, input_line_buffered);
+    buffrc = fill_buffer(handle, frtype, main_buffer + 2*bufthird, bufthird,
+      input_line_buffered);
+
+#if defined SUPPORT_LIBZ
+    if (frtype == FR_LIBZ && buffrc < 0) return 3;
+#endif
+#ifdef SUPPORT_LIBBZ2
+    if (frtype == FR_LIBBZ2 && buffrc < 0) return 3;
+#endif
+
+    bufflength = 2*bufthird + (PCRE2_SIZE)buffrc;
     endptr = main_buffer + bufflength;
 
     /* Adjust any last match point */
@@ -3625,7 +3594,18 @@ rc = pcre2grep(handle, frtype, pathname, (filenames > FN_DEFAULT ||
 
 #ifdef SUPPORT_LIBZ
 if (frtype == FR_LIBZ)
+  {
+  if (rc == 3)
+    {
+    int errnum;
+    const char *err = gzerror(ingz, &errnum);
+    if (!silent)
+      fprintf(stderr, "pcre2grep: Failed to read %s using zlib: %s\n",
+        pathname, err);
+    rc = 2;    /* The normal "something went wrong" code */
+    }
   gzclose(ingz);
+  }
 else
 #endif
 
@@ -4275,9 +4255,9 @@ for (i = 1; i < argc; i++)
   else
     {
     unsigned long int n = decode_number(option_data, op, longop);
-    if (op->type == OP_U32NUMBER) *((uint32_t *)op->dataptr) = n;
+    if (op->type == OP_U32NUMBER) *((uint32_t *)op->dataptr) = (uint32_t)n;
       else if (op->type == OP_SIZE) *((PCRE2_SIZE *)op->dataptr) = n;
-      else *((int *)op->dataptr) = n;
+      else *((int *)op->dataptr) = (int)n;
     }
   }
 
