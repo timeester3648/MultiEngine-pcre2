@@ -21,9 +21,10 @@ void project_pcre2(MultiBuild::Workspace& workspace, const int32 width) {
 		"./include/*.h",
 
 		"./src/pcre2_auto_possess.c",
-		"./gen_src/pcre2_chartables.c",
+  		"./gen_src/pcre2_chartables.c",
 		"./src/pcre2_chkdint.c",
 		"./src/pcre2_compile.c",
+		"./src/pcre2_compile_cgroup.c",
 		"./src/pcre2_compile_class.c",
 		"./src/pcre2_config.c",
 		"./src/pcre2_context.c",
@@ -36,6 +37,7 @@ void project_pcre2(MultiBuild::Workspace& workspace, const int32 width) {
 		"./src/pcre2_maketables.c",
 		"./src/pcre2_match.c",
 		"./src/pcre2_match_data.c",
+		"./src/pcre2_match_next.c",
 		"./src/pcre2_newline.c",
 		"./src/pcre2_ord2utf.c",
 		"./src/pcre2_pattern_info.c",
@@ -58,4 +60,9 @@ void project_pcre2(MultiBuild::Workspace& workspace, const int32 width) {
 		"HAVE_CONFIG_H",
 		MultiEngine::format("PCRE2_CODE_UNIT_WIDTH={}", width)
 	});
+
+	{
+		MultiBuild::ScopedFilter _(project, "project.compiler:VisualCpp");
+		properties.disable_warnings("4267");
+	}
 }

@@ -9,19 +9,14 @@
 #define HAVE_SYS_STAT_H 1
 #define HAVE_SYS_TYPES_H 1
 /* #undef HAVE_UNISTD_H */
-#ifdef MLE_PLATFORM_WINDOWS
-	#define HAVE_WINDOWS_H 1
-#endif
+#define HAVE_WINDOWS_H 1
 
-/* #undef HAVE_BCOPY */
 /* #undef HAVE_MEMFD_CREATE */
-#define HAVE_MEMMOVE 1
 /* #undef HAVE_SECURE_GETENV */
-#define HAVE_STRERROR 1
 
 #define SUPPORT_PCRE2_8 1
-#define SUPPORT_PCRE2_16 1
-#define SUPPORT_PCRE2_32 1
+/* #undef SUPPORT_PCRE2_16 */
+/* #undef SUPPORT_PCRE2_32 */
 /* #undef DISABLE_PERCENT_ZT */
 
 /* #undef SUPPORT_LIBBZ2 */
@@ -40,7 +35,7 @@
 /* #undef BSR_ANYCRLF */
 /* #undef EBCDIC */
 /* #undef EBCDIC_NL25 */
-/* #undef HEAP_MATCH_RECURSE */
+/* #undef EBCDIC_IGNORING_COMPILER */
 /* #undef NEVER_BACKSLASH_C */
 
 #define PCRE2_EXPORT            
