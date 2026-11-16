@@ -57,9 +57,31 @@ void project_pcre2(MultiBuild::Workspace& workspace, const int32 width) {
 
 	properties.defines({
 		"PCRE2_STATIC",
-		"HAVE_CONFIG_H",
-		MultiEngine::format("PCRE2_CODE_UNIT_WIDTH={}", width)
+		MultiEngine::format("PCRE2_CODE_UNIT_WIDTH={}", width),
+
+		"SUPPORT_UNICODE=1",
+
+		"PCRE2_EXPORT",
+		
+		// Note: larger allows for larger/more complex regexes
+		"LINK_SIZE=2",
+
+		"HEAP_LIMIT=20000000",
+		"MATCH_LIMIT=10000000",
+		"MATCH_LIMIT_DEPTH=MATCH_LIMIT",
+		"MAX_VARLOOKBEHIND=255",
+		"NEWLINE_DEFAULT=2",
+		"PARENS_NEST_LIMIT=250",
+		"PCRE2GREP_BUFSIZE=20480",
+		"PCRE2GREP_MAX_BUFSIZE=1048576",
+		"MAX_NAME_SIZE=128",
+		"MAX_NAME_COUNT=10000"
 	});
+
+	{
+		MultiBuild::ScopedFilter _(project, "config.platform:Windows");
+		properties.defines("HAVE_WINDOWS_H");
+	}
 
 	{
 		MultiBuild::ScopedFilter _(project, "project.compiler:VisualCpp");
