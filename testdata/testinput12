@@ -474,6 +474,27 @@
 /aa/utf,ucp,match_invalid_utf,global
     \x{d800}aa
     
+# FIRSTLINE offset limits with unpaired surrogates around CRLF.
+
+/\r\n\r?/firstline,use_offset_limit,newline=crlf,match_invalid_utf,no_start_optimize
+    a\x{dc00}\r\n\=offset_limit=1
+    a\x{dc00}\r\n\=offset_limit=2
+    a\x{dc00}\r\n\=offset_limit=3
+    a\x{d800}\r\n\r\=offset_limit=1
+    a\x{d800}\r\n\r\=offset_limit=2
+    a\x{d800}\r\n\r\=offset_limit=3
+    a\x{dc00}\r\n\rxxxxxxxx\=offset_limit=1
+    a\x{dc00}\r\n\rxxxxxxxx\=offset_limit=2
+    a\x{dc00}\r\n\rxxxxxxxx\=offset_limit=3
+    a\r\n\r\x{d800}\=offset_limit=0
+    a\r\n\r\x{d800}\=offset_limit=1
+    a\r\n\r\x{d800}\=offset_limit=2
+
+/\r\n\r?/firstline,use_offset_limit,newline=any,match_invalid_utf,no_start_optimize
+    a\x{d800}\r\n\rxxxxxxxx\=offset_limit=1
+    a\x{d800}\r\n\rxxxxxxxx\=offset_limit=2
+    a\x{d800}\r\n\rxxxxxxxx\=offset_limit=3
+
 /A\z/utf,match_invalid_utf
     A\x{df00}\n
 
@@ -497,6 +518,55 @@
 
 /(..)(*scs:(1)ab$)/match_invalid_utf
     ab\x{df00}cde         
+
+# Backward scans must not enter the invalid prefix before check_subject.
+
+/(?<=a{1,2})X/utf,match_invalid_utf
+\= Expect no match
+    \x{dc00}X
+
+/\X\X/utf,match_invalid_utf
+\= Expect no match
+    \x{dc00}\x{1f1e6}\x{1f1e7}
+
+/(?<=(.))/utf,match_invalid_utf
+    x\x{d800}
+    \x{10000}\x{dc00}
+
+/\b./utf,match_invalid_utf
+    \x{10000}s
+    \x{d800}s
+    \x{dc00}s
+
+/\X{0,3}+/utf,match_invalid_utf
+   \x{dc00}
+   a\x{dc00}
+   abc\x{dc00}
+
+/\X{1,3}+/utf,match_invalid_utf
+   \x{dc00}
+   a\x{dc00}
+   abc\x{dc00}
+
+/\X*/utf,match_invalid_utf
+   \x{dc00}
+   abc\x{dc00}
+   a\x{dc00}bc
+
+/\X+/utf,match_invalid_utf
+   \x{dc00}
+   abc\x{dc00}
+   a\x{dc00}bc
+
+/\X{2,}+/utf,match_invalid_utf
+   \x{dc00}
+   abc\x{dc00}
+   a\x{dc00}bc
+
+/\X?+/utf,match_invalid_utf
+   \x{dc00}
+   abc\x{dc00}
+   a\x{dc00}bc
 
 # ---------------------------------------------------- 
 

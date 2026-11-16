@@ -6,6 +6,14 @@ pub const CodeUnitWidth = enum {
     @"32",
 };
 
+/// `std.Build.build_root` (a `Cache.Directory`) became `std.Build.root`
+/// (a `Cache.Path`) in Zig 0.17.
+fn accessBuildRoot(b: *std.Build, sub_path: []const u8) !void {
+    if (comptime @hasField(std.Build, "root"))
+        return b.root.access(b.graph.io, sub_path, .{});
+    return b.build_root.handle.access(b.graph.io, sub_path, .{});
+}
+
 pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
@@ -14,7 +22,38 @@ pub fn build(b: *std.Build) !void {
     const linkage = b.option(std.builtin.LinkMode, "linkage", "whether to statically or dynamically link the library") orelse @as(std.builtin.LinkMode, if (rt.isGnuLibC()) .dynamic else .static);
     const sanitize_c = b.option(std.zig.SanitizeC, "sanitize_c", "whether to build with undefined behaviour sanitizer enabled") orelse .off;
     const codeUnitWidth = b.option(CodeUnitWidth, "code-unit-width", "Sets the code unit width") orelse .@"8";
-    const jit = b.option(bool, "support_jit", "Enable/disable JIT compiler support") orelse false;
+    const support_jit = b.option(bool, "support_jit", "Enable/disable JIT compiler support") orelse false;
+    const build_tests = b.option(bool, "build_tests", "Build the tests") orelse true;
+
+    const sljit_is_checked_out = if (!support_jit)
+        false
+    else if (accessBuildRoot(b, "deps/sljit/sljit_src/sljitLir.c")) |_| true else |err| switch (err) {
+        error.FileNotFound => false,
+        else => return err,
+    };
+
+    // We don't know how the sljit dependency is being provided. Either it
+    // comes via a git submodule, or it may be fetched by zig itself.
+    const sljit_include_path = if (!support_jit)
+        null
+    else if (sljit_is_checked_out)
+        null
+    else blk: {
+        const sljit = b.lazyDependency("sljit", .{}) orelse
+            break :blk null;
+
+        const files = b.addWriteFiles();
+
+        // Recreate the layout used by pcre2_jit_compile.c's relative include.
+        _ = files.addCopyDirectory(
+            sljit.path("sljit_src"),
+            "deps/sljit/sljit_src",
+            .{},
+        );
+        _ = files.add("src/.empty", "");
+
+        break :blk files.getDirectory().path(b, "src");
+    };
 
     const pcre2_h_dir = b.addWriteFiles();
     const pcre2_h = pcre2_h_dir.addCopyFile(b.path("src/pcre2.h.generic"), "pcre2.h");
@@ -26,9 +65,14 @@ pub fn build(b: *std.Build) !void {
     const is_glibc = rt.isGnuLibC();
     const is_freebsd = rt.isFreeBSDLibC();
 
-    const cflags = &.{
+    const common_cflags: []const []const u8 = &.{
+        "-std=c11",
         "-fvisibility=hidden",
     };
+    const cflags: []const []const u8 = if (rt.os.tag == .linux)
+        try std.mem.concat(b.allocator, []const u8, &.{ common_cflags, &.{"-D_GNU_SOURCE"} })
+    else
+        common_cflags;
 
     const config_h = b.addConfigHeader(
         .{
@@ -48,6 +92,7 @@ pub fn build(b: *std.Build) !void {
             .HAVE_SYS_TYPES_H = true,
             .HAVE_UNISTD_H = is_unix or is_mingw,
             .HAVE_WINDOWS_H = rt.os.tag == .windows,
+            .HAVE_STDATOMIC_H = true,
 
             .HAVE_MEMFD_CREATE = is_musl or is_glibc or is_freebsd,
             .HAVE_SECURE_GETENV = is_musl or is_glibc or is_freebsd,
@@ -63,7 +108,7 @@ pub fn build(b: *std.Build) !void {
             .SUPPORT_PCRE2_16 = codeUnitWidth == .@"16",
             .SUPPORT_PCRE2_32 = codeUnitWidth == .@"32",
             .SUPPORT_UNICODE = true,
-            .SUPPORT_JIT = jit,
+            .SUPPORT_JIT = support_jit,
 
             // As for CMake builds, use visibilty attributes for both shared and static
             // builds. Internal symbols should be hidden even in static builds, because
@@ -99,6 +144,9 @@ pub fn build(b: *std.Build) !void {
     lib_mod.addConfigHeader(config_h);
     lib_mod.addIncludePath(pcre2_h_dir.getDirectory());
     lib_mod.addIncludePath(b.path("src"));
+    if (sljit_include_path) |include_path| {
+        lib_mod.addIncludePath(include_path);
+    }
 
     lib_mod.addCSourceFile(.{
         .file = b.addWriteFiles().addCopyFile(b.path("src/pcre2_chartables.c.dist"), "pcre2_chartables.c"),
@@ -184,7 +232,10 @@ pub fn build(b: *std.Build) !void {
     });
 
     pcre2test_mod.linkLibrary(lib);
-    b.installArtifact(pcre2test);
+
+    if (build_tests) {
+        b.installArtifact(pcre2test);
+    }
 
     // pcre2-posix library
     if (codeUnitWidth == CodeUnitWidth.@"8") {

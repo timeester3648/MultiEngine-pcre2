@@ -4850,6 +4850,35 @@ First code unit = 'a'
 Last code unit = 'f'
 Subject length lower bound = 6
 
+# Automatic callouts following explicit callouts
+/a(?C1)/IB,auto_callout
+------------------------------------------------------------------
+        Bra
+        Callout 255 0 1
+        a
+        Callout 1 6 0
+        Ket
+        End
+------------------------------------------------------------------
+Capture group count = 0
+Options: auto_callout
+First code unit = 'a'
+Subject length lower bound = 1
+
+/a(?C255)/IB,auto_callout
+------------------------------------------------------------------
+        Bra
+        Callout 255 0 1
+        a
+        Callout 255 8 0
+        Ket
+        End
+------------------------------------------------------------------
+Capture group count = 0
+Options: auto_callout
+First code unit = 'a'
+Subject length lower bound = 1
+
 /abcde/IB,auto_callout
 ------------------------------------------------------------------
         Bra
@@ -7687,6 +7716,12 @@ No match
     a\r\nb
 No match
     a\x85b
+No match
+
+/^a.b/newline=any
+    a\x0bb
+No match
+    a\x0cb
 No match
 
 /^a.b/newline=nul
@@ -13607,6 +13642,102 @@ Starting code units: a b c d
 Last code unit = 'd'
 Subject length lower bound = 1
 
+# Whole-pattern recursion may backtrack through terminal iterators.
+
+/(?:b(?R)a|a+)/B
+------------------------------------------------------------------
+        Bra
+        Bra
+        b
+        Recurse
+        a
+        Alt
+        a+
+        Ket
+        Ket
+        End
+------------------------------------------------------------------
+    baa
+ 0: baa
+    bbaaa
+ 0: bbaaa
+    baaa
+ 0: baaa
+
+/(?:b(?0)a|a+)/B
+------------------------------------------------------------------
+        Bra
+        Bra
+        b
+        Recurse
+        a
+        Alt
+        a+
+        Ket
+        Ket
+        End
+------------------------------------------------------------------
+    baa
+ 0: baa
+
+# Local subroutine calls do not re-enter the whole pattern.
+
+/(?<r>b(?&r)a|x)a+/B
+------------------------------------------------------------------
+        Bra
+        CBra 1
+        b
+        Recurse
+        a
+        Alt
+        x
+        Ket
+        a++
+        Ket
+        End
+------------------------------------------------------------------
+    xaa
+ 0: xaa
+ 1: x
+    bxaaa
+ 0: bxaaa
+ 1: bxa
+
+# Confirm that non-terminal auto-possessification applies even with (?R)
+
+/(?:b(?R)a|a+b)/B
+------------------------------------------------------------------
+        Bra
+        Bra
+        b
+        Recurse
+        a
+        Alt
+        a++
+        b
+        Ket
+        Ket
+        End
+------------------------------------------------------------------
+
+# Confirm behaviour with character class possessification as well
+
+/(?:b(?R)a|[ac]+)/B
+------------------------------------------------------------------
+        Bra
+        Bra
+        b
+        Recurse
+        a
+        Alt
+        [ac]+
+        Ket
+        Ket
+        End
+------------------------------------------------------------------
+    baa
+ 0: baa
+
 # End of special auto-possessive tests
 
 /^A\o{1239}B/
@@ -13629,6 +13760,14 @@ Failed: error 167 at offset 8: non-hex character in \x{} (closing brace missing?
 /^A\x{/
 Failed: error 178 at offset 5: digits missing after \x or in \x{} or \o{} or \N{U+}
         here: ^A\x{ |<--|
+
+/\x{2/
+Failed: error 167 at offset 4: non-hex character in \x{} (closing brace missing?)
+        here: \x{2 |<--|
+
+/\o{7/
+Failed: error 164 at offset 4: non-octal character in \o{} (closing brace missing?)
+        here: \o{7 |<--|
 
 /[ab]++/B,no_auto_possess
 ------------------------------------------------------------------
@@ -15768,7 +15907,11 @@ Failed: error 160 at offset 12: (*VERB) not recognized or malformed
 
 /abc/use_offset_limit
     1234abcde\=offset_limit=100
- 0: abc
+Failed: error -77: bad offset limit value
+    1234abcde\=offset_limit=4294967294
+Failed: error -77: bad offset limit value
+    1234abcde\=offset_limit=4294967294,offset=4
+Failed: error -77: bad offset limit value
     1234abcde\=offset_limit=9
  0: abc
     1234abcde\=offset_limit=4
@@ -15796,12 +15939,226 @@ No match
 \= Expect error
     1234abcde\=offset_limit=4
 Failed: error -56: offset limit set without PCRE2_USE_OFFSET_LIMIT
+    1234abcde\=offset_limit=100
+Failed: error -77: bad offset limit value
 
 /^\w/m,use_offset_limit
     \n..\naa\=offset_limit=3
 No match
     \n..\naa\=offset_limit=4
  0: a
+
+# FIRSTLINE and offset limits must both constrain the starting position.
+
+/b/firstline,use_offset_limit,newline=lf
+    ab\nb\=offset_limit=0
+No match
+    ab\nb\=offset_limit=1
+ 0: b
+    ab\nb\=offset_limit=2
+ 0: b
+    ab\nb\=offset_limit=4
+ 0: b
+    ab\nb
+ 0: b
+    b\nb\=offset_limit=0
+ 0: b
+    a\nb\=offset_limit=3
+No match
+    ab\=offset_limit=0
+No match
+    ab\=offset_limit=2
+ 0: b
+    ab\nb\=offset=1,offset_limit=0
+No match
+    ab\nb\=offset=1,offset_limit=1
+ 0: b
+    a\nab\=offset=2,offset_limit=2
+No match
+    a\nab\=offset=2,offset_limit=3
+ 0: b
+    a\nb\=offset=2,offset_limit=2
+ 0: b
+
+/b/firstline,use_offset_limit,newline=lf,no_start_optimize
+    ab\nb\=offset_limit=0
+No match
+    ab\nb\=offset_limit=1
+ 0: b
+    ab\nb\=offset_limit=2
+ 0: b
+    ab\nb\=offset_limit=4
+ 0: b
+    ab\nb
+ 0: b
+    b\nb\=offset_limit=0
+ 0: b
+    a\nb\=offset_limit=3
+No match
+    ab\=offset_limit=0
+No match
+    ab\=offset_limit=2
+ 0: b
+    ab\nb\=offset=1,offset_limit=0
+No match
+    ab\nb\=offset=1,offset_limit=1
+ 0: b
+    a\nab\=offset=2,offset_limit=2
+No match
+    a\nab\=offset=2,offset_limit=3
+ 0: b
+    a\nb\=offset=2,offset_limit=2
+ 0: b
+
+/\n/firstline,use_offset_limit,newline=lf
+    a\nb\=offset_limit=0
+No match
+    a\nb\=offset_limit=1
+ 0: \x0a
+    a\nb\=offset_limit=3
+ 0: \x0a
+
+/b\nc/firstline,use_offset_limit,newline=lf
+    ab\nc\=offset_limit=0
+No match
+    ab\nc\=offset_limit=1
+ 0: b\x0ac
+    ab\n\=offset_limit=1,ps
+Partial match: b\x0a
+    ab\n\=offset_limit=1,ph
+Partial match: b\x0a
+
+/b/firstline,use_offset_limit,newline=crlf
+    ab\r\nb\=offset_limit=0
+No match
+    ab\r\nb\=offset_limit=1
+ 0: b
+    ab\r\nb\=offset_limit=2
+ 0: b
+    ab\r\nb\=offset_limit=5
+ 0: b
+    ab\r\nb\=offset_limit=50
+Failed: error -77: bad offset limit value
+    ab\r\nb
+ 0: b
+    a\r\nb\=offset_limit=4
+No match
+    b\r\nb\=offset_limit=0
+ 0: b
+    ab\=offset_limit=1
+ 0: b
+    ab\r\=offset_limit=1
+ 0: b
+
+# The scan limit is inclusive, and does not truncate the match.
+
+/\r\n/firstline,use_offset_limit,newline=crlf
+    a\r\nb\=offset_limit=0
+No match
+    a\r\nb\=offset_limit=1
+ 0: \x0d\x0a
+    a\r\nb\=offset_limit=2
+ 0: \x0d\x0a
+    \r\nb\=offset_limit=0
+ 0: \x0d\x0a
+
+/b\r\nc/firstline,use_offset_limit,newline=crlf
+    ab\r\nc\=offset_limit=0
+No match
+    ab\r\nc\=offset_limit=1
+ 0: b\x0d\x0ac
+    ab\r\n\=offset_limit=1,ps
+Partial match: b\x0d\x0a
+    ab\r\n\=offset_limit=1,ph
+Partial match: b\x0d\x0a
+
+/(?:)/firstline,use_offset_limit,newline=lf,no_start_optimize
+    abc\=offset=2,offset_limit=1
+No match
+    abc\=offset=2,offset_limit=2
+ 0: 
+    abc\=offset=3,offset_limit=3
+ 0: 
+    \=offset_limit=0
+ 0: 
+
+/(?:)/firstline,use_offset_limit,newline=crlf,no_start_optimize
+    abc\=offset=2,offset_limit=1
+No match
+    abc\=offset=2,offset_limit=2
+ 0: 
+    abc\=offset=3,offset_limit=3
+ 0: 
+    \=offset_limit=0
+ 0: 
+
+# CRLF at the subject end, adjacent lone CRs, and a shortened scan.
+
+/\r\n\r?/firstline,use_offset_limit,newline=crlf
+    a\r\n\=offset_limit=0
+No match
+    a\r\n\=offset_limit=1
+ 0: \x0d\x0a
+    a\r\n\=offset_limit=2
+ 0: \x0d\x0a
+    a\r\n\=offset_limit=3
+ 0: \x0d\x0a
+    a\r\n\r\=offset_limit=0
+No match
+    a\r\n\r\=offset_limit=1
+ 0: \x0d\x0a\x0d
+    a\r\n\r\=offset_limit=2
+ 0: \x0d\x0a\x0d
+    a\r\n\r\=offset_limit=4
+ 0: \x0d\x0a\x0d
+    a\r\r\n\=offset_limit=1
+No match
+    a\r\r\n\=offset_limit=2
+ 0: \x0d\x0a
+    a\r\r\n\=offset_limit=3
+ 0: \x0d\x0a
+    a\r\r\n\=offset_limit=4
+ 0: \x0d\x0a
+    a\r\n\rxxxxxxxx\=offset_limit=0
+No match
+    a\r\n\rxxxxxxxx\=offset_limit=1
+ 0: \x0d\x0a\x0d
+    a\r\n\rxxxxxxxx\=offset_limit=2
+ 0: \x0d\x0a\x0d
+
+/\n/firstline,use_offset_limit,newline=crlf
+    a\r\n\=offset_limit=1
+No match
+    a\r\n\=offset_limit=2
+No match
+    a\r\n\=offset_limit=3
+No match
+    a\r\n\=offset=2,offset_limit=1
+No match
+    a\r\n\=offset=2,offset_limit=2
+ 0: \x0a
+    a\r\n\=offset=2,offset_limit=3
+ 0: \x0a
+
+/\r\z/firstline,use_offset_limit,newline=crlf,no_start_optimize
+    a\r\=offset_limit=0
+No match
+    a\r\=offset_limit=1
+ 0: \x0d
+    a\r\=offset_limit=2
+ 0: \x0d
+    a\r\n\r\=offset_limit=2
+No match
+    a\r\n\r\=offset_limit=3
+No match
+    a\r\n\r\=offset_limit=4
+No match
+    a\r\n\r\=offset=3,offset_limit=2
+No match
+    a\r\n\r\=offset=3,offset_limit=3
+ 0: \x0d
+    a\r\n\r\=offset=3,offset_limit=4
+ 0: \x0d
 
 /abcd/null_context
     abcd\=null_context
@@ -16511,6 +16868,50 @@ Failed: error -55 at offset 3 in replacement: requested value is not set
 ** Invalid value in "offset_limit=1100000000000000000000"
     \=copy=11000000000
 ** Invalid value in "copy=11000000000"
+    \=callout_fail=4294967295
+ 0: 
+ 1: 
+ 2: 
+ 3: 
+    \=callout_fail=4294967296
+** Invalid value in "callout_fail=4294967296"
+    \=callout_fail=1:4294967295
+ 0: 
+ 1: 
+ 2: 
+ 3: 
+    \=callout_fail=1:4294967296
+** Invalid value in "callout_fail=1:4294967296"
+    \=callout_data=2147483647
+ 0: 
+ 1: 
+ 2: 
+ 3: 
+    \=callout_data=2147483648
+** Invalid value in "callout_data=2147483648"
+    \=callout_data=-2147483648
+ 0: 
+ 1: 
+ 2: 
+ 3: 
+    \=callout_data=-2147483649
+** Invalid value in "callout_data=-2147483649"
+    \=copy=2147483647
+ 0: 
+ 1: 
+ 2: 
+ 3: 
+Copy substring 2147483647 failed (-49): unknown substring
+Get substring 2147483647 length failed (-49): unknown substring
+    \=copy=2147483648
+** Invalid value in "copy=2147483648"
+    \=depth_limit=4294967295
+ 0: 
+ 1: 
+ 2: 
+ 3: 
+    \=depth_limit=4294967296
+** Invalid value in "depth_limit=4294967296"
 
 /(*MARK:A\x00b)/mark
     abc
@@ -17016,6 +17417,54 @@ No match
 /a(*ACCEPT)x|aa/endanchored
     aaa
  0: a
+
+/a+?(*THEN)/endanchored
+    aa
+ 0: a
+    aaaa
+ 0: a
+
+/a+?b|a+?(*THEN:arg)/endanchored
+    aaxaa
+ 0: a
+    aaxaab
+ 0: aab
+
+/a+?(?:b(*THEN)c|c(*THEN)b)/endanchored
+    aaabcaaacbaaabc
+ 0: aaabc
+
+/a+?(*SKIP)/endanchored
+    aa
+ 0: a
+    aaaa
+ 0: a
+
+/a+?b|a+?(*SKIP:arg)/endanchored
+    aaxaa
+ 0: aa
+    aaxaab
+ 0: aab
+
+/a+?(?:b(*SKIP)c|c(*SKIP)b)/endanchored
+    aaabcaaacbaaabc
+ 0: aaabc
+
+/a+?(*PRUNE)/endanchored
+    aa
+ 0: a
+    aaaa
+ 0: a
+
+/a+?b|a+?(*PRUNE:arg)/endanchored
+    aaxaa
+ 0: a
+    aaxaab
+ 0: aab
+
+/a+?(?:b(*PRUNE)c|c(*PRUNE)b)/endanchored
+    aaabcaaacbaaabc
+ 0: aaabc
 
 # Check auto-anchoring when there is a group that is never obeyed at
 # the start of a branch.
@@ -19184,7 +19633,7 @@ Failed: error -75: disallowed use of \K in lookaround
  0: 
 \= Expect error     
     abc\=null_subject
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
 
 //replace=[20]
     abc\=null_replacement
@@ -19201,11 +19650,44 @@ Failed: error -51: NULL argument passed with non-zero length
 /X*/g,replace=xy
 \= Expect error
     >X<\=null_replacement
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
 
 /X+/replace=[20]
     >XX<\=null_replacement
  1: ><
+
+# A NULL output buffer is permitted when the buffer length is zero. This is the
+# natural way to make a sizing call with substitute_overflow_length.
+
+/a/substitute_overflow_length
+    xay\=replace=[0]b,null_substitute_buffer
+Failed: error -48: no more memory: 4 code units are needed
+    xay\=replace=[0]b,null_substitute_buffer,offset=1
+Failed: error -48: no more memory: 4 code units are needed
+    xyz\=replace=[0]b,null_substitute_buffer
+Failed: error -48: no more memory: 4 code units are needed
+    \=replace=[0]b,null_substitute_buffer
+Failed: error -48: no more memory: 1 code units are needed
+    \=replace=[0]b,null_substitute_buffer,null_subject
+Failed: error -48: no more memory: 1 code units are needed
+    aaa\=replace=[0]bb,null_substitute_buffer,global
+Failed: error -48: no more memory: 7 code units are needed
+    ay\=replace=[0],null_substitute_buffer,substitute_literal,substitute_replacement_only
+Failed: error -48: no more memory: 1 code units are needed
+    ay\=replace=[0]\Uzz,null_substitute_buffer,substitute_extended
+Failed: error -48: no more memory: 4 code units are needed
+
+/a/
+\= Expect no more memory, without a length
+    xay\=replace=[0]b,null_substitute_buffer
+Failed: error -48: no more memory
+\= Expect PCRE2_ERROR_NULL (NULL output buffer with a non-zero length)
+    xay\=replace=[10]b,null_substitute_buffer
+Failed: error -51: NULL argument passed
+    xay\=replace=b,null_substitute_buffer
+Failed: error -51: NULL argument passed
+    xay\=replace=[10]b,null_substitute_buffer,substitute_overflow_length
+Failed: error -51: NULL argument passed
 
 # --------- 
 
@@ -21765,6 +22247,23 @@ Failed: error 207 at offset 117: extended character class nesting is too deep
 Failed: error 106 at offset 3: missing terminating ] for character class
         here: [z& |<--|
 
+/(?<=[12[34]])/alt_extended_class
+    1
+ 0: 
+    2
+ 0: 
+    3
+ 0: 
+    4
+ 0: 
+    1]
+ 0: 
+\= Expect no match
+    5
+No match
+    []
+No match
+
 /[[^]~~[^]]/B,alt_extended_class,allow_empty_class
 ------------------------------------------------------------------
         Bra
@@ -21785,6 +22284,27 @@ No match
 ------------------------------------------------------------------
     a
  0: a
+
+/[\d--1].(?<!x)/alt_extended_class
+    0a
+ 0: 0a
+    90
+ 0: 90
+\= Expect no match
+    1
+No match
+    2
+No match
+    a
+No match
+    1a
+No match
+    0x
+No match
+    aa
+No match
+    xa
+No match
 
 # --------------
 
@@ -21997,6 +22517,17 @@ Failed: error 207 at offset 160: extended character class nesting is too deep
 /(?[\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+(\n+[a]&\n+((\n)&\n))))))))))))))])/
 Failed: error 207 at offset 157: extended character class nesting is too deep
         here: ...n+[a]&\n+( |-->| (\n)&\n)))...
+
+/(?[\d-[1]]).(?<!x)/
+    0a
+ 0: 0a
+    90
+ 0: 90
+\= Expect no match
+    1a
+No match
+    0x
+No match
 
 # --------------
 
@@ -23429,6 +23960,89 @@ No match
  2: 
  3: 
 
+# Returned groups that are unset after the call are not counted (#1048).
+
+/(?&r(2))(x)?(?(DEFINE)(?<r>(a)))/
+    a
+ 0: a
+
+/^(?&r(2))(?(DEFINE)(?<r>(x)?(a)))/
+    a
+ 0: a
+    a\=ovector=1
+ 0: a
+
+/^(?&r(2,3))(?(DEFINE)(?<r>(x)?(y)?(a)))/
+    xa
+ 0: xa
+ 1: <unset>
+ 2: x
+
+/^(?&r(2,4))(?(DEFINE)(?<r>(a)(b)?(c)?))/
+    a
+ 0: a
+ 1: <unset>
+ 2: a
+
+/^(b)(?&r(3))(?(DEFINE)(?<r>(x)?(a)))/
+    ba
+ 0: ba
+ 1: b
+
+/(?(DEFINE)(?<r>(x)?a))^(b)(?&r(2))/
+    ba
+ 0: ba
+ 1: <unset>
+ 2: <unset>
+ 3: b
+
+/^(?(R)(x)?(a)|(?R(1))!)/
+    a!
+ 0: a!
+
+# A called group that returns itself keeps its unset or set status, inside and after.
+
+/^(?1(1))(?:\1S|U)$(?(DEFINE)(a(?:\1S|U)))/
+    aUU
+ 0: aUU
+\= Expect no match
+    aUaUS
+No match
+
+/^(a(?:\1S|U))(?1(1))\1$/
+    aUaaUSaU
+ 0: aUaaUSaU
+ 1: aU
+\= Expect no match
+    aUaaUSaaUS
+No match
+
+/^(?:(?&r(2))x|aa)(?(DEFINE)(?<r>(.)(.)(*ACCEPT)(.)))/
+    abx
+ 0: abx
+ 1: <unset>
+ 2: a
+    aby
+No match
+
+/^(?:(?&r(2,3))x|aa)(?(DEFINE)(?<r>(.)(.)(*ACCEPT)(.)))/
+    abx
+ 0: abx
+ 1: <unset>
+ 2: a
+ 3: b
+    aby
+No match
+
+/^(?:(?&r(3,4))x|aa)(?(DEFINE)(?<r>(.)(.)(*ACCEPT)(.)))/
+    abx
+ 0: abx
+ 1: <unset>
+ 2: <unset>
+ 3: b
+    aby
+No match
+
 # Test each syntax used for recursion
 
 /(?(R)(Sat)urday|(?R(1)),\1)/
@@ -23491,7 +24105,7 @@ Failed: error 217 at offset 27: expected capture group number or name
 # Test that a memory leak has been fixed
 /x/replace=r,substitute_matched
     x\=null_subject
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
 
 # Test that a couple of double frees have been fixed
 /foo/replace=bar,substitute_matched
@@ -23526,7 +24140,7 @@ Failed: error -51: NULL argument passed with non-zero length
     foo\=zero_terminate
  1: <foo>
     \=null_subject,zero_terminate
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
     foo|bar\=offset=1
  2: f<oo>|<bar>
 
@@ -23538,7 +24152,7 @@ Failed: error -51: NULL argument passed with non-zero length
     foo\=zero_terminate
  1: <foo>
     \=null_subject,zero_terminate
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
     foo|bar\=offset=1
  2: f<oo>|<bar>
 
@@ -23550,21 +24164,21 @@ Failed: error -51: NULL argument passed with non-zero length
     foo\=zero_terminate
  1: <foo>
     \=null_subject,zero_terminate
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
     foo|bar\=offset=1
  2: f<oo>|<bar>
 
 /\w+|^$/replace=<$&>,global,substitute_matched,null_substitute_match_data
     :::
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
     \=null_subject
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
     foo\=zero_terminate
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
     \=null_subject,zero_terminate
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
     foo|bar\=offset=1
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
 
 # Now some NULL context tests
 
@@ -23582,9 +24196,9 @@ Failed: error -51: NULL argument passed with non-zero length
     foo\=null_context,substitute_matched
  1: <foo>
     :::\=null_context,null_substitute_match_data,substitute_matched
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
     foo\=null_context,null_substitute_match_data,substitute_matched
-Failed: error -51: NULL argument passed with non-zero length
+Failed: error -51: NULL argument passed
 
 # Failed matches: no-match; partial; other failure (callout-triggered)
 
@@ -23667,6 +24281,22 @@ Failed: error -72: substitute subject differs from prior match call
  1: X::textY
 
 # --------------
+# An unterminated \Q applies to one replacement, not to those for later matches
+# --------------
+
+/x/g,replace=\Qabc,substitute_extended
+    xx
+ 2: abcabc
+
+/x/g,replace=\Qa$$,substitute_extended
+    xxx
+ 3: a$$a$$a$$
+
+/x/g,replace=\Qa\Eb,substitute_extended
+    xx
+ 2: abab
+
+# --------------
 # Tests for substitution with partial
 # --------------
 
@@ -23712,12 +24342,270 @@ Failed: error -76 at offset 3 in replacement: replacement $' or $_ not supported
 Failed: error -76 at offset 3 in replacement: replacement $' or $_ not supported with partial match
         here: >$' |<--| <
 
+# (*ACCEPT) inside a group that is called as a subroutine ends only the
+# subroutine, even when the group itself is inside an assertion.
+
+/(?=(a|(*ACCEPT))(?1)x)/
+    a
+ 0: 
+ 1: 
+
+/(?=(()|(*ACCEPT))(?1)x)/
+    a
+ 0: 
+ 1: 
+
+/(?=(a|(*ACCEPT))(?1)x)a/
+    a
+ 0: a
+ 1: 
+
+/^(?!(a|(*ACCEPT))(?1)x)/
+    a
+No match
+
+/(?<=(a|(*ACCEPT))(?1)x)/
+    a
+ 0: 
+ 1: 
+
+# An assertion entered inside the subroutine is still ended by (*ACCEPT).
+
+/(?1)(?(DEFINE)((?=a(*ACCEPT)x)a))/
+    a
+ 0: a
+
+/(?1)(?(DEFINE)((?=(a)(*ACCEPT)x)a))/
+    a
+ 0: a
+
+/(?1)(?(DEFINE)((?(?=a(*ACCEPT)x)a|b)))/
+    a
+ 0: a
+    b
+ 0: b
+
+/(?(?=(a|(*ACCEPT))(?1)x)a|b)/
+    a
+ 0: a
+ 1: 
+    b
+No match
+
+# A group inside an assertion that is called from outside any assertion. The
+# interpreter used to return an internal code (-999) here.
+
+/(?=(b|(*ACCEPT)))(?1)x/
+    ax
+ 0: x
+ 1: 
+    bx
+ 0: bx
+ 1: b
+
+/(?!(b|(*ACCEPT)))|(?1)a/
+    a
+ 0: a
+
+/(a)(*scs:(1)(b|(*ACCEPT)))(?2)a/
+    aa
+ 0: aa
+ 1: a
+ 2: 
+
+# An assertion inside a subroutine must not cause an early subroutine return.
+
+/(?1)(?(DEFINE)((?!a(*ACCEPT)x)a))/
+\= Expect no match
+    a
+No match
+
+/(?1)(?(DEFINE)((?=a(*ACCEPT)x)ab))/
+    ab
+ 0: ab
+
+# Conditional assertion inside a recursion must not end the call.
+
+/(?1)(?(DEFINE)((?(?=a(*ACCEPT)x)ab|c)))/
+    ab
+ 0: ab
+
+/(?1)(?(DEFINE)((?(?!a(*ACCEPT)x)c|ab)))/
+    ab
+ 0: ab
+
+# Scan-substring assertion inside a recursion must not end the call.
+
+/(a)(?2)(?(DEFINE)((*scs:(1)a(*ACCEPT)x)b))/
+    ab
+ 0: ab
+ 1: a
+
+# Non-atomic assertion, lookbehind, and intervening group-frame controls.
+
+/(?1)(?(DEFINE)((*napla:a(*ACCEPT)x)ab))/
+    ab
+ 0: ab
+
+/aa(?1)(?(DEFINE)((?<=a(*ACCEPT)x)b))/
+    aab
+ 0: aab
+
+/aa(?1)(?(DEFINE)((?<!a(*ACCEPT)x)b))/
+    aab
+No match
+
+/(?1)(?(DEFINE)((?=(?>a(*ACCEPT)x))ab))/
+    ab
+ 0: ab
+
+# A completed assertion is no longer an active ACCEPT boundary.
+
+/(?=(a|(*ACCEPT)))(?1)b/
+    ab
+ 0: ab
+ 1: a
+
+# The three ACCEPT contexts: whole expression, subroutine, and assertion.
+
+/a(*ACCEPT)x/
+    ab
+ 0: a
+
+/(?1)b(?(DEFINE)(a(*ACCEPT)x))/
+    ab
+ 0: ab
+
+/(?=a(*ACCEPT)x)ab/
+    ab
+ 0: ab
+
+/(?!a(*ACCEPT)x)ab/
+    ab
+No match
+
+# An open capture must be skipped when finding the active recursion.
+
+/(?=((a(*ACCEPT))))(?1)x/
+    ax
+ 0: ax
+ 1: a
+ 2: a
+
+# Alternate assertion/recursion boundaries inside another recursion.
+
+/(?1)c(?(DEFINE)((?=(a|(*ACCEPT))(?2)x)ab))/
+    abc
+ 0: abc
+
+# Callout start offsets after resetting the start of a match.
+
+/(?C1)A\K(?C2)B(?C3)C/
+    _ABC_
+--->_ABC_
+  1  ^        A
+  2   ^       B
+  3   ^^      C
+ 0: BC
+    _ABC_ABC_\=offset=4
+--->_ABC_ABC_
+  1      ^        A
+  2       ^       B
+  3       ^^      C
+ 0: BC
+
+/A\K(?C"after")BC/
+    _ABC_
+Callout (7): "after"
+--->_ABC_
+      ^       B
+ 0: BC
+
+/A\K(?C1)B\K(?C2)C/
+    _ABC_
+--->_ABC_
+  1   ^       B
+  2    ^      C
+ 0: C
+
+/A(?:B\K(?C1)D|(?C2)B)(?C3)C/
+    _ABC_
+--->_ABC_
+  1    ^      D
+  2  ^^       B
+  3  ^ ^      C
+ 0: ABC
+
+/A\K(?(?C1)(?=B)B|D)C/
+    _ABC_\=no_jit
+--->_ABC_
+  1   ^       (?=
+ 0: BC
+
+/(?(DEFINE)(?<x>A\K(?C1)B))(?&x)(?C2)C/
+    _ABC_
+--->_ABC_
+  1   ^       B
+  2   ^^      C
+ 0: BC
+
+/A\K(?C1)B/
+    _AC_AB_
+--->_AC_AB_
+  1   ^         B
+  1      ^      B
+ 0: B
+
+/(?C1)A\K(?C2)B/no_start_optimize
+    _AC_AB_
+--->_AC_AB_
+  1 ^           A
+  1  ^          A
+  2   ^         B
+  1   ^         A
+  1    ^        A
+  1     ^       A
+  2      ^      B
+ 0: B
+
+/(?C1)A(?C2)B(?C3)C/
+    _ABC_
+--->_ABC_
+  1  ^        A
+  2  ^^       B
+  3  ^ ^      C
+ 0: ABC
+
+/A\KBC/auto_callout
+    _ABC_
+--->_ABC_
+ +0  ^        A
+ +1  ^^       \K
+ +3   ^       B
+ +4   ^^      C
+ +5   ^ ^     End of pattern
+ 0: BC
+
+# JIT: the frame of an atomic group containing more than 16383 frame words
+# (here 5462 copies of a capture group) must not overflow when stored.
+# The preceding callout leaves a zero in the stale stack slot.
+
+/x(?C1)/
+    x
+--->x
+  1 ^^    End of pattern
+ 0: x
+
+/(?>a(){5462}b)|a/
+    a\=jitstack=1024
+ 0: a
+
 # End of testinput2
 Error -80: PCRE2_ERROR_BADDATA (unknown error number)
 Error -62: bad serialized data
 Error -2: partial match
 Error -1: no match
-Error 0: PCRE2_ERROR_BADDATA (unknown error number)
+Error 0: no error
 Error 100: no error
 Error 101: \ at end of pattern
 Error 191: PCRE2_EXTRA_ALLOW_SURROGATE_ESCAPES is not allowed in UTF-16 mode

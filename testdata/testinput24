@@ -330,6 +330,12 @@
 
 /??a??/
 
+/[!a]/
+
+/[^xy]/
+
+/a*[!b]/
+
 #pattern convert=unset
 #pattern convert=glob,convert_glob_escape=0
 
@@ -342,6 +348,48 @@
 /a`*b/convert_glob_escape=0
 
 /a`*b/convert_glob_escape=x
+
+# Glob syntax characters cannot be used as escapes.
+
+/a*b/convert_glob_escape=!
+
+/a*b/convert_glob_escape=*
+
+/a*b/convert_glob_escape=-
+
+/a*b/convert_glob_escape=:
+
+/a*b/convert_glob_escape=?
+
+/a*b/convert_glob_escape=[
+
+/a*b/convert_glob_escape=]
+
+/a*b/convert_glob_escape=^
+
+# Supported escapes still quote wildcards and character-class literals.
+
+/a#*b/convert_glob_escape=#
+    a*b
+    axxb
+
+/[##]/convert_glob_escape=#
+    #
+    A
+
+/[a#-c]/convert_glob_escape=#
+    -
+    a
+    c
+    b
+
+/[\^]/convert_glob_escape=\
+    ^
+    A
+
+/[`^]/convert_glob_escape=`
+    ^
+    A
 
 # Tests of null and empty inputs
 

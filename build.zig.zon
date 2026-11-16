@@ -1,19 +1,33 @@
 .{
     .name = .pcre2,
-    .version = "10.48.0-DEV",
+    .version = "10.50.0-DEV",
 
     // Do NOT change this for new releases.
     // DO change this if making a fork of PCRE2 which is used by any Zig clients.
     .fingerprint = 0x914b3d63ebab9e21,
 
-    .minimum_zig_version = "0.15.2",
-    .dependencies = .{},
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .sljit = .{
+            .url = "git+https://github.com/zherczeg/sljit.git#23d64b71b8f5fa51d774a01459770f7e1b68d371",
+            .hash = "N-V-__8AAH2RRgBpPe_6lGuKFMHlTB6LVVNKLu6f-XBAhjh2",
+            .lazy = true,
+        },
+    },
     .paths = .{
-        "build.zig",   "build.zig.zon",
-        "src/",        "doc/",
-        "deps/",       "HACKING",
-        "INSTALL",     "README.md",
-        "LICENCE.md",  "AUTHORS.md",
+        "deps/",
+        "doc/",
+        "src/",
+        "AUTHORS.md",
+        "ChangeLog",
+        "HACKING",
+        "LICENCE.md",
+        "NEWS",
+        "NON-AUTOTOOLS-BUILD.md",
+        "README.md",
         "SECURITY.md",
+        "SUPPORT-LIFECYCLE.md",
+        "build.zig",
+        "build.zig.zon",
     },
 }

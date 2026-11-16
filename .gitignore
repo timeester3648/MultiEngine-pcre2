@@ -3,8 +3,6 @@
 build/
 build-*/
 
-pages/
-
 *.a
 *.gcda
 *.gcno
@@ -62,20 +60,25 @@ pcre2test
 pcre2test.exe
 test-driver
 test-suite.log
+
+# Temporary files from the test suite may be left in the root folder.
+--
+-testtemp1grep
 test3input
 test3output
 test3outputA
 test3outputB
-testNinput
+test3outputC
+test3outputD
+test3outputE
+test3outputF
 testNinputgrep
-teststderr
 teststderrM
 teststderrgrep
 teststdout
 teststdoutM
-testtemp1
+teststdoutgrep
 testtemp1grep
-testtemp2
 testtemp2grep
 testtry
 testtry2
@@ -113,6 +116,8 @@ src/libpcre2-32.sym
 src/libpcre2-posix.sym
 src/stamp-h1
 
+CMakeUserPresets.json
+
 /bazel-*
 *.bazel.lock
 
@@ -124,7 +129,6 @@ zig-cache/
 # Folders that may be used by individual developers, without appearing in git
 # status output.
 .vscode/
-.devcontainer/
 .personal/
 
 # End

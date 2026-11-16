@@ -1624,6 +1624,42 @@ No match
     \x{d800}aa
  0: aa
     
+# FIRSTLINE offset limits with unpaired surrogates around CRLF.
+
+/\r\n\r?/firstline,use_offset_limit,newline=crlf,match_invalid_utf,no_start_optimize
+    a\x{dc00}\r\n\=offset_limit=1
+No match
+    a\x{dc00}\r\n\=offset_limit=2
+ 0: \x{0d}\x{0a}
+    a\x{dc00}\r\n\=offset_limit=3
+ 0: \x{0d}\x{0a}
+    a\x{d800}\r\n\r\=offset_limit=1
+No match
+    a\x{d800}\r\n\r\=offset_limit=2
+ 0: \x{0d}\x{0a}\x{0d}
+    a\x{d800}\r\n\r\=offset_limit=3
+ 0: \x{0d}\x{0a}\x{0d}
+    a\x{dc00}\r\n\rxxxxxxxx\=offset_limit=1
+No match
+    a\x{dc00}\r\n\rxxxxxxxx\=offset_limit=2
+ 0: \x{0d}\x{0a}\x{0d}
+    a\x{dc00}\r\n\rxxxxxxxx\=offset_limit=3
+ 0: \x{0d}\x{0a}\x{0d}
+    a\r\n\r\x{d800}\=offset_limit=0
+No match
+    a\r\n\r\x{d800}\=offset_limit=1
+ 0: \x{0d}\x{0a}\x{0d}
+    a\r\n\r\x{d800}\=offset_limit=2
+ 0: \x{0d}\x{0a}\x{0d}
+
+/\r\n\r?/firstline,use_offset_limit,newline=any,match_invalid_utf,no_start_optimize
+    a\x{d800}\r\n\rxxxxxxxx\=offset_limit=1
+No match
+    a\x{d800}\r\n\rxxxxxxxx\=offset_limit=2
+ 0: \x{0d}\x{0a}\x{0d}
+    a\x{d800}\r\n\rxxxxxxxx\=offset_limit=3
+ 0: \x{0d}\x{0a}\x{0d}
+
 /A\z/utf,match_invalid_utf
     A\x{df00}\n
 No match
@@ -1657,6 +1693,82 @@ No match
     ab\x{df00}cde         
  0: ab
  1: ab
+
+# Backward scans must not enter the invalid prefix before check_subject.
+
+/(?<=a{1,2})X/utf,match_invalid_utf
+\= Expect no match
+    \x{dc00}X
+No match
+
+/\X\X/utf,match_invalid_utf
+\= Expect no match
+    \x{dc00}\x{1f1e6}\x{1f1e7}
+No match
+
+/(?<=(.))/utf,match_invalid_utf
+    x\x{d800}
+ 0: 
+ 1: x
+    \x{10000}\x{dc00}
+ 0: 
+ 1: \x{10000}
+
+/\b./utf,match_invalid_utf
+    \x{10000}s
+ 0: s
+    \x{d800}s
+ 0: s
+    \x{dc00}s
+ 0: s
+
+/\X{0,3}+/utf,match_invalid_utf
+   \x{dc00}
+ 0: 
+   a\x{dc00}
+ 0: a
+   abc\x{dc00}
+ 0: abc
+
+/\X{1,3}+/utf,match_invalid_utf
+   \x{dc00}
+No match
+   a\x{dc00}
+ 0: a
+   abc\x{dc00}
+ 0: abc
+
+/\X*/utf,match_invalid_utf
+   \x{dc00}
+ 0: 
+   abc\x{dc00}
+ 0: abc
+   a\x{dc00}bc
+ 0: a
+
+/\X+/utf,match_invalid_utf
+   \x{dc00}
+No match
+   abc\x{dc00}
+ 0: abc
+   a\x{dc00}bc
+ 0: a
+
+/\X{2,}+/utf,match_invalid_utf
+   \x{dc00}
+No match
+   abc\x{dc00}
+ 0: abc
+   a\x{dc00}bc
+ 0: bc
+
+/\X?+/utf,match_invalid_utf
+   \x{dc00}
+ 0: 
+   abc\x{dc00}
+ 0: a
+   a\x{dc00}bc
+ 0: a
 
 # ---------------------------------------------------- 
 
